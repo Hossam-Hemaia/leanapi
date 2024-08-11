@@ -5,6 +5,7 @@ const dotenv = require("dotenv");
 const cors = require("cors-express");
 const multer = require("multer");
 const slugify = require("slugify");
+const cron = require("node-cron");
 
 const dbConnect = require("./dbConnect/dbConnect");
 const rdsClient = require("./dbConnect/redisConnect");
@@ -15,6 +16,7 @@ const chatRouter = require("./routes/chat");
 const inventoryRouter = require("./routes/inventory");
 
 const socketController = require("./controllers/socketController");
+const chatController = require("./controllers/chatController");
 
 const fileStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -33,6 +35,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
 
+app.set("trust proxy", true);
+
 app.use("/files", express.static(path.join(__dirname, "files")));
 app.use(multer({ storage: fileStorage }).array("files"));
 
@@ -46,6 +50,10 @@ app.use(multer({ storage: fileStorage }).array("files"));
 //     await chatServices.addToChatHistory(chatsIdsTbl.rows[i][0]);
 //   }
 // });
+
+cron.schedule("1 0 * * *", async () => {
+  await chatController.createMessagesQueue();
+});
 
 const initDataBaseConnection = async () => {
   await dbConnect.init();

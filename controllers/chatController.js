@@ -1,3 +1,6 @@
+const oracledb = require("oracledb");
+const axios = require("axios");
+const FormData = require("form-data");
 const dbConnect = require("../dbConnect/dbConnect");
 const chatServices = require("../services/chatServices");
 const utilities = require("../utilities/utils");
@@ -121,5 +124,135 @@ exports.postChangeNotificationStatus = async (req, res, next) => {
     res.status(201).json({ success: true });
   } catch (err) {
     throw err;
+  }
+};
+
+/***********************************************
+ * Wahtsapp Messaging API                      *
+ ***********************************************/
+
+exports.createMessagesQueue = async () => {
+  try {
+    console.log("creating message queue");
+    const connection = await dbConnect.getConnection();
+    const sql = `SELECT COMPANY_ID, COMPANY_NAME, TIME_TO_SEND, TXT_MASSEGE_
+                 FROM COMPANY`;
+    const companies = await connection.execute(
+      sql,
+      {},
+      {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+      }
+    );
+    // prepare the message queue
+    if (companies.rows.length > 0) {
+      const messagesQueue = [];
+      for (let company of companies.rows) {
+        let messageDetails = {};
+        const detailSql = `SELECT EMAIL, MOB FROM V_CONTRACT_ALERT WHERE COMPANY_ID = :companyId`;
+        const binds = {
+          companyId: company.COMPANY_ID,
+        };
+        let contacts = await connection.execute(detailSql, binds, {
+          outFormat: oracledb.OUT_FORMAT_OBJECT,
+        });
+        if (contacts.rows.length > 0) {
+          let bulk = [];
+          if (contacts.rows.length > 1) {
+            for (let contact of contacts.rows) {
+              bulk.push("+" + contact?.MOB);
+            }
+          } else {
+            bulk = ["+" + contacts.rows[0]?.MOB];
+          }
+          messageDetails.companyName = company.COMPANY_NAME;
+          messageDetails.timeToSend = utilities.getTimeInMilliseconds(
+            company.TIME_TO_SEND
+          );
+          messageDetails.originalTime = company.TIME_TO_SEND;
+          messageDetails.message = company.TXT_MASSEGE_;
+          messageDetails.phoneNumber = "+" + contacts.rows[0]?.MOB;
+          messageDetails.bulkNumbers = bulk.join(",");
+          messageDetails.email = contacts.rows[0]?.EMAIL;
+          messagesQueue.push(messageDetails);
+        }
+      }
+      for (let message of messagesQueue) {
+        setTimeout(async () => {
+          const formData = new FormData();
+          formData.append("appkey", "626c72de-4273-4aa1-bde3-5e991d424c2a");
+          formData.append(
+            "authkey",
+            "7wuMasC0OyjGQHNSFQk1jM1MojSO88INdznh0NuHJ6le9vd4py"
+          );
+          formData.append("to", message.phoneNumber);
+          formData.append("message", message.message);
+          formData.append("to_array", message.bulkNumbers);
+          const config = {
+            method: "POST",
+            headers: {
+              accept: "application/json",
+              "content-type": "application/x-www-form-urlencoded",
+            },
+          };
+          const response = await axios.post(
+            "https://wplus.my-sys.online/api/bluck-message",
+            formData,
+            config
+          );
+          if (response) {
+            const date = new Date();
+            const hours = date.getHours() + 1;
+            const minutes = date.getMinutes();
+            const time = `${hours}:${minutes}`;
+            const msgSql = `INSERT INTO MASSEGE_LOG (TEL, MSG, M_TIME, STATUS)
+                            VALUES(:tel, :msg, :messageTime, :status)`;
+            const binds = {
+              tel: message.phoneNumber,
+              msg: message.message,
+              messageTime: time,
+              status: response.data[0].status_code,
+            };
+            await connection.execute(msgSql, binds);
+            await connection.tpcCommit();
+          }
+        }, message.timeToSend);
+      }
+    }
+  } catch (err) {
+    throw err;
+  }
+};
+
+exports.sendWhatsappMessage = async (req, res, next) => {
+  try {
+    const phoneNumbers = req.body.phoneNumbers;
+    const message = req.body.message;
+    const formData = new FormData();
+    const config = {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+    };
+    const bulkNumbers = phoneNumbers.join(",");
+    formData.append("appkey", "626c72de-4273-4aa1-bde3-5e991d424c2a");
+    formData.append(
+      "authkey",
+      "7wuMasC0OyjGQHNSFQk1jM1MojSO88INdznh0NuHJ6le9vd4py"
+    );
+    formData.append("to", phoneNumbers[0]);
+    formData.append("message", message);
+    formData.append("to_array", bulkNumbers);
+    const response = await axios.post(
+      "https://wplus.my-sys.online/api/bluck-message",
+      formData,
+      config
+    );
+    console.log(response.data);
+    res.status(201).json({ success: true, message: "Messages sent" });
+  } catch (err) {
+    next(err);
   }
 };

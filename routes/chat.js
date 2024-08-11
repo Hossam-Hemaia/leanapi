@@ -27,4 +27,6 @@ router.post(
   chatController.postChangeNotificationStatus
 );
 
+router.post("/send/whatsapp/message", chatController.sendWhatsappMessage);
+
 module.exports = router;

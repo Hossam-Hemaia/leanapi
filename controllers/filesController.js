@@ -1,5 +1,6 @@
 const path = require("path");
 const puppeteer = require("puppeteer");
+const slugify = require("slugify");
 const utilities = require("../utilities/utils");
 const taqnyatApi = require("../utilities/taqnyatAPI");
 
@@ -166,26 +167,33 @@ exports.whatsappMessage = async (req, res, next) => {
 
 exports.convertHtmlToPdf = async (req, res, next) => {
   try {
-    const file = path.join(__dirname, "..", "files", "config.html");
-    const pdfFile = path.join(__dirname, "..", "files", "pdfs", "config.pdf");
+    const url = req.query.url;
+    const filename = `${slugify(req.query.filename)}-${Date.now()}.pdf`;
+    const withMessage = req.query.withMessage;
+    const email = req.query.email;
+    const message = req.query.message;
+    // const file = path.join(__dirname, "..", "files", "config.html");
+    const pdfFile = path.join(__dirname, "..", "files", "pdfs", `${filename}`);
     const browser = await puppeteer.launch({
       args: ["--no-sandbox"],
       headless: "new",
       defaultViewport: { width: 1920, height: 1080 },
     });
     const page = await browser.newPage();
-    await page.goto(`file://${file}`, { waitUntil: "networkidle0" });
+    await page.goto(`${url}`, { waitUntil: "networkidle0" });
     await page.pdf({ path: pdfFile, format: "A4" });
     await page.close();
     if (page.isClosed()) {
       console.log("page closed!");
+      await browser.close();
     }
-    await browser.close();
-    const io = require("../socket").getIo();
-    io.emit("send_print_job", {
-      fileUrl: `${req.protocol}s://${req.get("host")}/files/pdfs/config.pdf`,
-    });
-    res.status({ success: true, message: "new file created!" });
+    const fileUrl = `${req.protocol}s://${req.headers["x-forwarded-host"]}/files/pdfs/${filename}`;
+    if (withMessage === "true") {
+      await utilities.emailWithFiles(email, "", filename, fileUrl, message);
+    }
+    res
+      .status(200)
+      .json({ success: true, message: "new file created!", url: fileUrl });
   } catch (err) {
     next(err);
   }

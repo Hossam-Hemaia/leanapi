@@ -1080,30 +1080,43 @@ exports.deleteInvoiceFile = async (fileName, fileType) => {
   }
 };
 
-// exports.emailSender = async (email, ccMail, fileName, filePath, message) => {
-//   let transporter = nodemailer.createTransport({
-//     service: "gmail",
-//     auth: {
-//       user: process.env.EMAIL,
-//       pass: process.env.EMAIL_PASS,
-//     },
-//   });
-//   let emailOptions = {
-//     from: process.env.EMAIL,
-//     to: email,
-//     bcc: ccMail,
-//     subject: "Alliwa Invoice",
-//     text: `${message}`,
-//     attachments: [
-//       {
-//         filename: fileName, // The name you want the file to have in the email
-//         path: filePath, // The path to the file you want to attach
-//       },
-//     ],
-//   };
-//   const emailStatus = await transporter.sendMail(emailOptions);
-//   console.log(emailStatus);
-// };
+exports.emailWithFiles = async (
+  email,
+  ccMail = "",
+  fileName,
+  filePath,
+  message
+) => {
+  let transporter = nodemailer.createTransport({
+    host: "smtp.ipage.com",
+    auth: {
+      user: process.env.EMAIL,
+      pass: process.env.EMAIL_PASS,
+      method: "LOGIN",
+    },
+    port: 465,
+    secure: true,
+    tls: {
+      rejectUnauthorized: false,
+    },
+    debug: true,
+  });
+  let emailOptions = {
+    from: process.env.EMAIL,
+    to: email,
+    bcc: ccMail,
+    subject: "Pdf Document",
+    text: `${message}`,
+    attachments: [
+      {
+        filename: fileName, // The name you want the file to have in the email
+        path: filePath, // The path to the file you want to attach
+      },
+    ],
+  };
+  const emailStatus = await transporter.sendMail(emailOptions);
+  console.log(emailStatus);
+};
 
 exports.convertToPostScriptPoint = (paperWidth, paperHeight) => {
   const postScriptPoint = 28.346456693;
@@ -1160,4 +1173,25 @@ exports.emailSender = async (email, title, message) => {
   };
   const emailStatus = await transporter.sendMail(emailOptions);
   console.log(emailStatus);
+};
+
+exports.getTimeInMilliseconds = (targetTime) => {
+  // Get the current date and time
+  const now = this.getLocalDate(new Date());
+  // Parse the target time string (e.g., "17:25")
+  const [targetHours, targetMinutes] = targetTime.split(":").map(Number);
+  // Create a new Date object for the target time today
+  const targetDate = this.getLocalDate(
+    new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      targetHours,
+      targetMinutes
+    )
+  );
+  // Calculate the difference in milliseconds
+  console.log(targetDate, now);
+  const timeDifference = targetDate - now - 3600000;
+  return timeDifference;
 };
